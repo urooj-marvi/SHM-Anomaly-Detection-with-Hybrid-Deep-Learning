@@ -6,12 +6,15 @@ The system fuses vibration data (accelerometers), environmental conditions (temp
 
 ---
 📂** Project Structure**
+
+
 │── app.py                  # Streamlit dashboard
 │── hybrid_shm_model.keras  # Trained hybrid model
 │── label_classes.csv       # Class label mapping
 │── requirements.txt        # Dependencies
 │── sample_data.csv         # Demo dataset
 │── README.md               # Project documentation
+
 ---
 📊 **Data Format**
 
