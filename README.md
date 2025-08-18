@@ -62,6 +62,7 @@ Normal class detected with high recall (~95%)
 Most confusion occurs between Minor and Drift anomalies
 
 Multi-modal fusion improves accuracy by ~12% compared to vibration-only models
+
 ---
 **Dashboard Features**
 
@@ -90,7 +91,9 @@ Trained model → hybrid_shm_model.keras
 
 Label mapping → label_classes.csv
 
-Interactive dashboard → app.py (Streamlit)
+
+Interactive dashboard → app.py ([Streamlit](https://asmabut-structural-health-monito-streamlit-shm-dashboard-cd72kt.streamlit.app/))
+
 ---
 Author: Urooj Marvi
 📧 Contact: uroojmarvi456@gmail.com
