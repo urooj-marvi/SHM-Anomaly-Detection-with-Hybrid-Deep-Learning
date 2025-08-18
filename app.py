@@ -1,110 +1,116 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.express as px
 import tensorflow as tf
 
-# ​​​ Load Model & Classes
-@st.cache_resource
-def load_model_and_classes():
-    model = tf.keras.models.load_model("hybrid_shm_model.keras", compile=False)
-    classes = pd.read_csv("label_classes.csv")["class"].tolist()
-    return model, classes
+# ----------------------------
+# Page setup
+# ----------------------------
+st.set_page_config(page_title="SHM Dashboard", page_icon="📊", layout="wide")
+st.markdown("<h1 style='text-align: center;'>🏗️ Structural Health Monitoring (SHM) Dashboard</h1>", unsafe_allow_html=True)
 
-model, CLASSES = load_model_and_classes()
+# Sidebar settings
+st.sidebar.header("⚙️ Settings")
+seq_len = st.sidebar.slider("Sequence Length", min_value=12, max_value=48, value=12, step=1)
 
-# ​​​ Sidebar Filters
-st.set_page_config(page_title="SHM Anomaly Dashboard", layout="wide")
-st.title("🏗 SHM Anomaly Detection Dashboard")
+# ----------------------------
+# File uploader
+# ----------------------------
+uploaded_file = st.file_uploader("📂 Upload Preprocessed CSV", type=["csv"])
 
-uploaded = st.file_uploader("Upload Preprocessed Data (.CSV)", type="csv")
-seq_length = st.sidebar.slider("Sequence length (time steps)", 12, 48, 12)
-bridge_sel = None
-sensor_sel = None
-df = None
+if uploaded_file:
+    df = pd.read_csv(uploaded_file, parse_dates=["index"])
+    df = df.set_index("index").sort_index()
+    st.success(f"✅ Data loaded successfully! Shape: {df.shape}")
 
-if uploaded:
-    df = pd.read_csv(uploaded, parse_dates=["index"]).set_index("index")
-    st.sidebar.write(f"Data loaded: {df.shape[0]} samples, {df.shape[1]} features")
-
-    # Bridge / Sensor selectors
-    bridge_sel = st.sidebar.selectbox("Select Bridge", sorted(df["bridge_id"].unique()))
-    sensor_sel = st.sidebar.selectbox(
-        "Select Sensor", sorted(df[df["bridge_id"] == bridge_sel]["sensor_id"].unique())
+    # ----------------------------
+    # Tabs
+    # ----------------------------
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["📈 Sensor Trends", "⚡ Structural Condition", "🔮 Predictions", "📊 Degradation & Forecast", "📑 Data Table"]
     )
 
-# ​​​ Sequence Building
-def build_sequences(grouped, vib_cols, env_cols, win):
-    vib, env, timestamps = [], [], []
-    if len(grouped) < win:
-        return np.empty((0, win, len(vib_cols))), np.empty((0, win, len(env_cols))), []
-    grp = grouped[vib_cols + env_cols].interpolate(limit_direction="both").values
-    for start in range(len(grouped) - win + 1):
-        vib.append(grp[start:start+win, :len(vib_cols)])
-        env.append(grp[start:start+win, len(vib_cols):])
-        timestamps.append(grouped.index[start + win - 1])
-    return np.array(vib), np.array(env), timestamps
+    # ----------------------------
+    # Tab 1: Sensor Trends
+    # ----------------------------
+    with tab1:
+        st.subheader("📈 Sensor Time Series Trends")
 
-# ​​​ Prediction + Dashboard
-if df is not None and bridge_sel and sensor_sel:
-    df_sel = df[(df["bridge_id"] == bridge_sel) & (df["sensor_id"] == sensor_sel)]
-    vib_cols = ["acceleration_x","acceleration_y","acceleration_z"]
-    env_cols = [c for c in ["temperature_c","wind_speed_mps","humidity_percent",
-                            "fft_peak_freq","fft_magnitude","degradation_score","forecast_score_next_30d"] 
-                if c in df_sel.columns]
+        col1, col2 = st.columns(2)
 
-    Xv, Xe, ts = build_sequences(df_sel, vib_cols, env_cols, seq_length)
+        with col1:
+            fig = px.line(df, y=["acceleration_x", "acceleration_y", "acceleration_z"],
+                          title="Acceleration (x,y,z)", labels={"value": "Acceleration (g)"})
+            st.plotly_chart(fig, use_container_width=True)
 
-    if Xv.size > 0:
-        preds = model.predict({"vib_in": Xv, "env_in": Xe}, verbose=0)
-        pred_idx = np.argmax(preds, axis=1)
-        pred_labels = [CLASSES[i] for i in pred_idx]
-        confidences = np.max(preds, axis=1)
+        with col2:
+            fig = px.line(df, y=["temperature_c", "humidity_percent", "wind_speed_mps"],
+                          title="Environmental Conditions")
+            st.plotly_chart(fig, use_container_width=True)
 
-        results = pd.DataFrame({
-            "timestamp": ts,
-            "predicted": pred_labels,
-            "confidence": confidences
-        }).set_index("timestamp")
+    # ----------------------------
+    # Tab 2: Structural Condition
+    # ----------------------------
+    with tab2:
+        st.subheader("⚡ Structural Condition Over Time")
+        if "damage_class" in df.columns:
+            fig = px.scatter(df, x=df.index, y="damage_class", color="damage_class",
+                             title="Structural Condition Timeline",
+                             labels={"damage_class": "Condition"})
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("⚠️ No `damage_class` column found in dataset.")
 
-        # ​​​ Tabs
-        tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Time Series", "Download", "About"])
+    # ----------------------------
+    # Tab 3: Predictions
+    # ----------------------------
+    with tab3:
+        st.subheader("🔮 Model Predictions")
+        try:
+            model = tf.keras.models.load_model("hybrid_shm_model.keras", compile=False)
+            classes = pd.read_csv("label_classes.csv")["class"].tolist()
 
-        with tab1:
-            st.header(" Anomaly Summary")
-            st.write(results["predicted"].value_counts().rename("Count"))
-            st.bar_chart(results["predicted"].value_counts())
+            # Features
+            features = ["acceleration_x","acceleration_y","acceleration_z",
+                        "temperature_c","humidity_percent","wind_speed_mps",
+                        "fft_peak_freq","fft_magnitude"]
+            X = df[features].fillna(method="ffill").values
 
-        with tab2:
-            st.header(" Sensor Data & Prediction Timeline")
-            fig, ax = plt.subplots(figsize=(10, 6))
-            df_plot = df_sel.loc[results.index]
-            for col in vib_cols + env_cols:
-                ax.plot(df_plot.index, df_plot[col], label=col)
-            ax2 = ax.twinx()
-            ax2.scatter(results.index, results["predicted"].astype("category").cat.codes,
-                        c=results["predicted"].astype("category").cat.codes, cmap="tab10", label="Prediction", s=50)
-            ax2.set_yticks(range(len(CLASSES)))
-            ax2.set_yticklabels(CLASSES)
-            ax.legend(loc="upper left")
-            ax2.legend(loc="upper right")
-            st.pyplot(fig)
+            # Take first sequence
+            X = np.expand_dims(X[:seq_len], axis=0)
+            preds = model.predict(X)
+            pred_class = classes[np.argmax(preds)]
 
-        with tab3:
-            st.header(" Download Predictions")
-            st.write("Save your predictions as CSV for reports or further analysis")
-            st.download_button(" Download CSV", results.to_csv(), "predictions.csv")
+            st.metric("Predicted Class", pred_class)
+            st.progress(float(np.max(preds)))
 
-        with tab4:
-            st.header(" About")
-            st.markdown("""
-This app performs **real-time structural health anomaly detection** using a hybrid deep learning model.
-- **Architecture**: CNN + BiLSTM + Transformer fusion
-- **Input**: 10-min synchronized sensor data
-- **Output**: Anomaly class + confidence
+            fig = px.bar(x=classes, y=preds[0],
+                         title="Prediction Confidence",
+                         labels={"x": "Class", "y": "Probability"})
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"⚠️ Prediction unavailable: {e}")
 
-Use the sidebar filters to select the bridge, sensor, and sequence window.
-            """)
-    else:
-        st.error("Not enough data for the selected sequence length.")
+    # ----------------------------
+    # Tab 4: Degradation & Forecast
+    # ----------------------------
+    with tab4:
+        st.subheader("📊 Degradation & Forecast Trends")
+        if "degradation_score" in df.columns and "forecast_score_next_30d" in df.columns:
+            fig = px.line(df, y=["degradation_score", "forecast_score_next_30d"],
+                          title="Degradation vs Forecast (Next 30 Days)",
+                          labels={"value": "Score"})
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("⚠️ Required columns missing (`degradation_score`, `forecast_score_next_30d`).")
 
+    # ----------------------------
+    # Tab 5: Data Table
+    # ----------------------------
+    with tab5:
+        st.subheader("📑 Data Table Preview")
+        st.dataframe(df.head(50))
+
+else:
+    st.info("📌 Upload a CSV file to start using the dashboard.")
