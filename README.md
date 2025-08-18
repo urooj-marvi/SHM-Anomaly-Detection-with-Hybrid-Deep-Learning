@@ -3,6 +3,7 @@
 
 This project implements a hybrid deep learning model for anomaly detection in Structural Health Monitoring (SHM).
 The system fuses vibration data (accelerometers), environmental conditions (temperature, wind, humidity), and frequency-domain features (FFT) to detect different types of structural anomalies such as Normal, Drift, Minor, and Major.
+
 ---
 📂** Project Structure**
 │── app.py                  # Streamlit dashboard
@@ -76,8 +77,7 @@ The Streamlit dashboard provides an interactive anomaly detection interface:
 📥 Download predictions as CSV
 
 ---
-
-Deliverables
+**Deliverables**
 
 Preprocessed dataset → Synchronized & Preprocessed.csv
 
